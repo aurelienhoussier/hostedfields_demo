@@ -300,8 +300,53 @@
                 flex: 1;
             }
 
-                .event-handler-item .btn-remove:hover {
-                    background-color: #dc2626;
+                    .event-handler-item .btn-remove:hover {
+                            background-color: #dc2626;
+                        }
+
+                .console-container {
+                    background-color: #1f2937;
+                    color: #e5e7eb;
+                    border: 1px solid #374151;
+                    border-radius: 4px;
+                    padding: 12px;
+                    font-family: 'Courier New', monospace;
+                    font-size: 11px;
+                    line-height: 1.5;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    min-height: 100px;
+                }
+
+                .console-log {
+                    padding: 4px 0;
+                    word-wrap: break-word;
+                    word-break: break-all;
+                }
+
+                    .console-log.console-info {
+                        color: #93c5fd;
+                    }
+
+                    .console-log.console-success {
+                        color: #86efac;
+                    }
+
+                    .console-log.console-warning {
+                        color: #fbbf24;
+                    }
+
+                    .console-log.console-error {
+                        color: #f87171;
+                    }
+
+                    .console-log.console-log {
+                        color: #e5e7eb;
+                    }
+
+                .console-timestamp {
+                    color: #6b7280;
+                    margin-right: 8px;
                 }
     </style>
 </head>
@@ -467,6 +512,14 @@ input {
                 <!--<button class="btn-secondary" onclick="downloadConfiguration()">📥 Download Config</button>
                 <button class="btn-secondary" onclick="downloadCompleteSetup()">📦 Download Setup</button>-->
                 <button class="btn-secondary" onclick="copyToClipboard()">📋 Copy JSON</button>
+            </div>
+
+            <div class="section" style="margin-top: 30px;">
+                <h2>📜 Console Logs</h2>
+                <div class="console-container" id="consoleContainer">
+                    <div class="console-log console-info">Console initialized...</div>
+                </div>
+                <button class="btn-secondary" onclick="hostedFieldsBuilder.clearConsole()" style="width: 100%; margin-top: 10px;">🗑️ Clear Console</button>
             </div>
         </div>
     </div>

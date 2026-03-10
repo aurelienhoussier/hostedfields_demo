@@ -28,16 +28,6 @@ class HostedFieldsBuilder {
             'error',
             'validityChange'
         ];
-        this.dangerousPatterns = [
-            { regex: /window\.location/gi, name: 'window.location', severity: 'danger', reason: 'Can redirect to malicious sites' },
-            { regex: /eval\s*\(/gi, name: 'eval()', severity: 'danger', reason: 'Dynamic code execution' },
-            { regex: /Function\s*\(/gi, name: 'Function()', severity: 'danger', reason: 'Dynamic code execution' },
-            { regex: /localStorage|sessionStorage/gi, name: 'Storage access', severity: 'warning', reason: 'May expose sensitive data' },
-            { regex: /fetch\s*\(|XMLHttpRequest/gi, name: 'Network requests', severity: 'warning', reason: 'HTTP requests to external servers' },
-            { regex: /document\.write|innerHTML\s*=/gi, name: 'DOM manipulation', severity: 'warning', reason: 'Can inject malicious content' },
-            { regex: /\.cookie/gi, name: 'Cookie access', severity: 'danger', reason: 'Can steal session cookies' },
-            { regex: /\.submit\s*\(|\.click\s*\(/gi, name: 'Form submission', severity: 'info', reason: 'May trigger unintended actions' }
-        ];
         this.templates = {
             classic: this.getClassicTemplate(),
             creditcard: this.getCreditCardTemplate()
@@ -47,6 +37,32 @@ class HostedFieldsBuilder {
 
     init() {
         this.loadDemoData();
+    }
+
+    log(message, type = 'log') {
+        const consoleContainer = document.getElementById('consoleContainer');
+        if (!consoleContainer) return;
+
+        const timestamp = new Date().toLocaleTimeString('fr-FR');
+        const logEntry = document.createElement('div');
+        logEntry.className = `console-log console-${type}`;
+        logEntry.innerHTML = `<span class="console-timestamp">[${timestamp}]</span>${this.escapeHtml(String(message))}`;
+
+        consoleContainer.appendChild(logEntry);
+        consoleContainer.scrollTop = consoleContainer.scrollHeight;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    clearConsole() {
+        const consoleContainer = document.getElementById('consoleContainer');
+        if (consoleContainer) {
+            consoleContainer.innerHTML = '<div class="console-log console-info">Console cleared...</div>';
+        }
     }
 
     getClassicTemplate() {
@@ -310,11 +326,31 @@ class HostedFieldsBuilder {
                     'border-color': '#0050D8',
                     'box-shadow': 'none'
                 }
-            }
+            },
+            eventHandlers: []
         };
     }
 
     getCreditCardTemplate() {
+        const cardBrandEntryHandler = `const brands = event.data?.brands || [];
+let padding = '0%';
+let width = '0px';
+if (brands.length >= 2) {
+    padding = '60%';
+    width = '110px';
+} else if (brands.length === 1) {
+    padding = '80%';
+    width = '50px';
+}
+const ccCardBrandElements = document.querySelectorAll('[class*="cc-brand-sdk"]');
+ccCardBrandElements.forEach(element => {
+    element.style.paddingLeft = padding;
+});
+const cardBrandElements = document.querySelectorAll('[class*="card-brand-overlay"]');
+cardBrandElements.forEach(element => {
+    element.style.width = width;
+});`;
+
         return {
             html: `<div class="cc-container">
   <form id="paymentForm" class="cc-form">
@@ -546,7 +582,14 @@ class HostedFieldsBuilder {
                     border: 'none',
                     'box-shadow': 'none'
                 }
-            }
+            },
+            eventHandlers: [
+                {
+                    id: 0,
+                    eventType: 'card-brand-entry',
+                    code: cardBrandEntryHandler
+                }
+            ]
         };
     }
 
@@ -588,6 +631,16 @@ class HostedFieldsBuilder {
         document.getElementById('cssEditor').value = template.css;
         document.getElementById('styleConfigEditor').value = JSON.stringify(template.styleConfig, null, 2);
         document.getElementById('fieldsConfigEditor').value = JSON.stringify(template.fieldsConfig, null, 2);
+
+        // Load event handlers from template if available
+        if (template.eventHandlers && Array.isArray(template.eventHandlers)) {
+            this.config.eventHandlers = template.eventHandlers.map((handler, index) => ({
+                id: this.eventHandlerCount++,
+                eventType: handler.eventType,
+                code: handler.code
+            }));
+            this.renderEventHandlers();
+        }
 
         this.showStatus(`✅ Template "${templateName}" loaded!`, 'ready');
     }
@@ -697,7 +750,7 @@ class HostedFieldsBuilder {
 
         } catch (err) {
             this.showStatus('❌ Error: ' + err.message, 'error');
-            console.error(err);
+            this.log('Error: ' + err.message, 'error');
         }
     }
 
@@ -713,12 +766,12 @@ class HostedFieldsBuilder {
         script.async = true;
 
         script.onload = () => {
-            console.log('✅ SDK loaded successfully');
+            this.log('✅ SDK loaded successfully', 'success');
             this.initializeHostedFields(styleConfig, fieldsConfig, sessionData);
         };
 
         script.onerror = () => {
-            console.error('❌ Error loading SDK');
+            this.log('❌ Error loading SDK', 'error');
             this.showStatus('❌ Error loading SDK', 'error');
             // Fallback: initialize demo
             this.initializeHostedFieldsDemo(fieldsConfig, styleConfig);
@@ -744,7 +797,7 @@ class HostedFieldsBuilder {
                 fields: fieldsConfig
             });
 
-            console.log('✅ Hosted Fields initialized', hostedFields);
+            this.log('✅ Hosted Fields initialized', 'success');
 
             // Apply custom event handlers from configuration
             if (this.config.eventHandlers && Array.isArray(this.config.eventHandlers)) {
@@ -756,9 +809,9 @@ class HostedFieldsBuilder {
 
                         // Attach the handler to the event
                         hostedFields.on(handler.eventType, eventHandler);
-                        console.log(`✅ Event handler attached: ${handler.eventType}`);
+                        this.log(`✅ Event handler attached: ${handler.eventType}`, 'success');
                     } catch (err) {
-                        console.error(`❌ Error attaching handler for ${handler.eventType}:`, err);
+                        this.log(`❌ Error attaching handler for ${handler.eventType}: ${err.message}`, 'error');
                     }
                 });
             }
@@ -766,7 +819,7 @@ class HostedFieldsBuilder {
             this.showStatus('✅ SDK and Hosted Fields initialized successfully!', 'ready');
 
         } catch (err) {
-            console.error('Initialization error:', err);
+            this.log('Initialization error: ' + err.message, 'error');
             this.showStatus('⚠️ ' + err.message, 'error');
             this.initializeHostedFieldsDemo(fieldsConfig, styleConfig);
         }
@@ -854,7 +907,7 @@ class HostedFieldsBuilder {
 
             try {
                 this.hostedFieldsInstance.tokenize(false).then(result => {
-                    console.log('✅ Tokenization successful:', result);
+                    this.log('✅ Tokenization successful: ' + JSON.stringify(result), 'success');
 
                     const payload = {
                         token: result.token,
@@ -863,12 +916,12 @@ class HostedFieldsBuilder {
                         fieldsData: this.config.fieldsConfig
                     };
 
-                    console.log('📤 Tokenized payload:', payload);
+                    this.log('📤 Tokenized payload: ' + JSON.stringify(payload), 'log');
                     this.displayTokenResult(result, payload);
                     this.showStatus('✅ Tokenization successful!', 'ready');
 
                 }).catch(err => {
-                    console.error('❌ Tokenization error:', err);
+                    this.log('❌ Tokenization error: ' + err.message, 'error');
                     this.showStatus('❌ Tokenization error: ' + err.message, 'error');
                     this.displayTokenError(err);
                 });
@@ -977,7 +1030,7 @@ class HostedFieldsBuilder {
             fieldsData: this.config.fieldsConfig
         };
 
-        console.log('📤 Demo tokenization:', payload);
+        this.log('📤 Demo tokenization: ' + JSON.stringify(payload), 'log');
         this.displayTokenResult({ token: demoToken }, payload);
         this.showStatus('✅ Demo tokenization successful! (SDK not available)', 'ready');
     }
@@ -1275,6 +1328,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     clearAll() {
+        // eslint-disable-next-line no-restricted-globals
         if (confirm('Are you sure you want to reset all editors?')) {
             document.getElementById('htmlEditor').value = '';
             document.getElementById('cssEditor').value = '';
@@ -1325,7 +1379,7 @@ if (typeof module !== 'undefined' && module.exports) {
         const handler = {
             id: this.eventHandlerCount++,
             eventType: 'focus',
-            code: 'console.log("Event fired:", event);'
+            code: '// Enter your custom event handler code here\nwindow.hostedFieldsBuilder.log("Event fired: " + event.type, "info");'
         };
         this.config.eventHandlers.push(handler);
         this.renderEventHandlers();
@@ -1344,53 +1398,6 @@ if (typeof module !== 'undefined' && module.exports) {
         }
     }
 
-    validateEventCode(code) {
-        const issues = [];
-        
-        this.dangerousPatterns.forEach(pattern => {
-            const matches = code.match(pattern.regex);
-            if (matches) {
-                issues.push({
-                    pattern: pattern.name,
-                    severity: pattern.severity,
-                    reason: pattern.reason,
-                    count: matches.length
-                });
-            }
-        });
-        
-        return issues;
-    }
-
-    getSecurityBadge(issues) {
-        if (issues.length === 0) {
-            return '<span style="display: inline-block; background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">✅ SAFE</span>';
-        }
-        
-        const hasDanger = issues.some(i => i.severity === 'danger');
-        if (hasDanger) {
-            return '<span style="display: inline-block; background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">⚠️ DANGER</span>';
-        }
-        
-        return '<span style="display: inline-block; background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">⚡ WARNING</span>';
-    }
-
-    getIssuesHTML(issues) {
-        if (issues.length === 0) {
-            return '<div style="color: #10b981; font-size: 11px; margin-top: 6px;">No security issues detected</div>';
-        }
-        
-        let html = '<div style="margin-top: 6px; font-size: 11px;">';
-        issues.forEach(issue => {
-            const color = issue.severity === 'danger' ? '#dc2626' : issue.severity === 'warning' ? '#f59e0b' : '#3b82f6';
-            html += `<div style="color: ${color}; margin-bottom: 4px;">
-                • <strong>${issue.pattern}</strong> (${issue.severity}): ${issue.reason}
-            </div>`;
-        });
-        html += '</div>';
-        return html;
-    }
-
     renderEventHandlers() {
         const container = document.getElementById('eventHandlersContainer');
         if (!container) return;
@@ -1406,9 +1413,6 @@ if (typeof module !== 'undefined' && module.exports) {
             const item = document.createElement('div');
             item.className = 'event-handler-item';
 
-            // Validate the code
-            const issues = this.validateEventCode(handler.code);
-            
             const eventSelect = document.createElement('select');
             eventSelect.className = 'event-select';
             this.availableEvents.forEach(event => {
@@ -1435,30 +1439,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
             const header = document.createElement('div');
             header.className = 'event-header';
-            header.style.display = 'flex';
-            header.style.justifyContent = 'space-between';
-            header.style.alignItems = 'center';
-            header.style.marginBottom = '8px';
-            
-            const selectContainer = document.createElement('div');
-            selectContainer.style.flex = '1';
-            selectContainer.style.marginRight = '10px';
-            selectContainer.appendChild(eventSelect);
-            
-            const badgeContainer = document.createElement('div');
-            badgeContainer.innerHTML = this.getSecurityBadge(issues);
-            
-            header.appendChild(selectContainer);
-            header.appendChild(badgeContainer);
+            header.appendChild(eventSelect);
 
             const codeContainer = document.createElement('div');
             codeContainer.appendChild(header);
             codeContainer.appendChild(codeTextarea);
-            
-            // Add security issues display
-            const issuesDiv = document.createElement('div');
-            issuesDiv.innerHTML = this.getIssuesHTML(issues);
-            codeContainer.appendChild(issuesDiv);
 
             const actions = document.createElement('div');
             actions.className = 'event-actions';
@@ -1470,26 +1455,22 @@ if (typeof module !== 'undefined' && module.exports) {
             // Update handler when values change
             eventSelect.addEventListener('change', (e) => {
                 this.updateEventHandler(handler.id, e.target.value, codeTextarea.value);
-                this.renderEventHandlers(); // Re-render to update validation
             });
 
             codeTextarea.addEventListener('change', (e) => {
                 this.updateEventHandler(handler.id, eventSelect.value, e.target.value);
-                this.renderEventHandlers(); // Re-render to update validation
             });
 
             container.appendChild(item);
         });
     }
-
-    // ...existing code...
 }
 
 // Initialization
 let hostedFieldsBuilder;
 document.addEventListener('DOMContentLoaded', () => {
     hostedFieldsBuilder = new HostedFieldsBuilder();
-    console.log('🚀 Hosted Fields Builder initialized');
+    hostedFieldsBuilder.log('🚀 Hosted Fields Builder initialized', 'success');
 });
 
 // Global functions for onclick
